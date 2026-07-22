@@ -1,0 +1,115 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+interface User {
+  id: number;
+  telegram_id: number;
+  username: string;
+  points_balance: number;
+  solana_address: string | null;
+}
+
+declare global {
+  interface Window {
+    Telegram: any;
+  }
+}
+
+export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function authenticate() {
+      try {
+        const tg = window.Telegram?.WebApp;
+
+        if (!tg) {
+          setError('This app must be opened inside Telegram.');
+          setLoading(false);
+          return;
+        }
+
+        tg.ready();
+        const initData = tg.initData;
+
+        if (!initData) {
+          setError('No Telegram data found. Open this app via your Telegram bot.');
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || 'Authentication failed');
+        } else {
+          setUser(data.user);
+        }
+      } catch (err) {
+        setError('Something went wrong connecting to the server.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    authenticate();
+  }, []);
+
+  if (loading) {
+    return <main style={{ padding: '20px', textAlign: 'center' }}>Loading...</main>;
+  }
+
+  if (error) {
+    return (
+      <main style={{ padding: '20px', textAlign: 'center', color: '#c00' }}>
+        {error}
+      </main>
+    );
+  }
+
+  return (
+    <main style={{ padding: '20px', maxWidth: '480px', margin: '0 auto' }}>
+      <h1>Welcome, {user?.username}</h1>
+
+      <div style={{
+        background: '#f0f0f0',
+        borderRadius: '12px',
+        padding: '24px',
+        textAlign: 'center',
+        margin: '20px 0'
+      }}>
+        <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>Your Balance</p>
+        <p style={{ fontSize: '36px', fontWeight: 'bold', margin: '8px 0' }}>
+          {user?.points_balance} points
+        </p>
+      </div>
+
+      <button style={{
+        width: '100%',
+        padding: '16px',
+        fontSize: '18px',
+        fontWeight: 'bold',
+        background: '#2481cc',
+        color: 'white',
+        border: 'none',
+        borderRadius: '10px',
+        cursor: 'pointer'
+      }}>
+        Watch Ad to Earn
+      </button>
+
+      <div style={{ marginTop: '20px', textAlign: 'center', color: '#999', fontSize: '14px' }}>
+        Banner ad slot (placeholder)
+      </div>
+    </main>
+  );
+}
