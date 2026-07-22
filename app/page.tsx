@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { generateFingerprint } from '@/lib/fingerprint';
 
 interface User {
   id: number;
@@ -41,10 +42,12 @@ export default function Home() {
           return;
         }
 
+        const fingerprint = generateFingerprint();
+
         const res = await fetch('/api/auth', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData }),
+          body: JSON.stringify({ initData, fingerprint }),
         });
 
         const data = await res.json();
