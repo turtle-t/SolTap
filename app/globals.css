@@ -11,6 +11,11 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 @media (prefers-color-scheme: dark) {
   :root {
