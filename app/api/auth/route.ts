@@ -16,15 +16,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid Telegram data' }, { status: 401 });
     }
 
-    const { user } = verified;
+    const { user, startParam } = verified;
 
-    // Capture requester IP from headers (Vercel sets these)
     const ip =
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
       req.headers.get('x-real-ip') ||
       'unknown';
 
-    // Check if this user already exists
     const existing = await sql`
       SELECT id, telegram_id, username, points_balance, solana_address
       FROM users
@@ -32,9 +30,9 @@ export async function POST(req: NextRequest) {
     `;
 
     let userRow;
+    let isNewUser = false;
 
     if (existing.length > 0) {
-      // Existing user — update their IP/fingerprint on each visit
       const updated = await sql`
         UPDATE users
         SET last_ip = ${ip}, fingerprint_hash = ${fingerprint || null}
@@ -43,13 +41,31 @@ export async function POST(req: NextRequest) {
       `;
       userRow = updated[0];
     } else {
-      // New user — create with IP/fingerprint captured immediately
       const created = await sql`
         INSERT INTO users (telegram_id, username, last_ip, fingerprint_hash)
         VALUES (${user.id}, ${user.username || user.first_name}, ${ip}, ${fingerprint || null})
         RETURNING id, telegram_id, username, points_balance, solana_address
       `;
       userRow = created[0];
+      isNewUser = true;
+    }
+
+    // --- Referral capture (only matters for genuinely new users) ---
+    if (isNewUser && startParam && startParam.startsWith('ref_')) {
+      const referrerTelegramId = startParam.replace('ref_', '');
+
+      const referrer = await sql`
+        SELECT id FROM users WHERE telegram_id = ${referrerTelegramId}
+      `;
+
+      // Can't refer yourself, and referrer must actually exist
+      if (referrer.length > 0 && referrer[0].id !== userRow.id) {
+        await sql`
+          INSERT INTO referrals (referrer_id, referred_id)
+          VALUES (${referrer[0].id}, ${userRow.id})
+          ON CONFLICT (referred_id) DO NOTHING
+        `;
+      }
     }
 
     // --- Fraud check: shared IP or fingerprint across other accounts ---
@@ -66,7 +82,6 @@ export async function POST(req: NextRequest) {
       const SHARED_ACCOUNT_THRESHOLD = 3;
 
       if (sharedAccounts.length >= SHARED_ACCOUNT_THRESHOLD) {
-        // Flag this user, log why, but don't block anything
         await sql`
           UPDATE users
           SET flagged = TRUE, flag_reason = 'Shared IP/fingerprint with multiple other accounts'
