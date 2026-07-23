@@ -20,7 +20,7 @@ declare global {
 
 type FlowState = 'idle' | 'instructions' | 'watching' | 'verifying' | 'result';
 
-const MIN_AD_WATCH_SECONDS = 10; // must match the server's MIN_AD_WATCH_SECONDS
+const POINTS_PER_DOLLAR = 1000; // internal accounting unit only — never shown to the user
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -29,6 +29,7 @@ export default function Home() {
   const [flowState, setFlowState] = useState<FlowState>('idle');
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [resultSuccess, setResultSuccess] = useState(false);
+  const [balanceBounce, setBalanceBounce] = useState(false);
 
   useEffect(() => {
     async function authenticate() {
@@ -75,7 +76,7 @@ export default function Home() {
     authenticate();
   }, []);
 
-  async function refreshBalance() {
+  async function refreshBalance(animate = false) {
     const tg = window.Telegram?.WebApp;
     if (!tg?.initData) return;
 
@@ -86,7 +87,13 @@ export default function Home() {
       body: JSON.stringify({ initData: tg.initData, fingerprint }),
     });
     const data = await res.json();
-    if (res.ok) setUser(data.user);
+    if (res.ok) {
+      setUser(data.user);
+      if (animate) {
+        setBalanceBounce(true);
+        setTimeout(() => setBalanceBounce(false), 500);
+      }
+    }
   }
 
   function startFlow() {
@@ -135,9 +142,10 @@ export default function Home() {
       const data = await res.json();
 
       if (res.ok) {
-        setResultMessage(data.message || 'Points credited!');
+        const dollarsEarned = (data.totalAwarded / POINTS_PER_DOLLAR).toFixed(3);
+        setResultMessage(`+$${dollarsEarned} earned!`);
         setResultSuccess(true);
-        await refreshBalance();
+        await refreshBalance(true);
       } else {
         setResultMessage(data.error || 'Could not claim reward.');
         setResultSuccess(false);
@@ -166,29 +174,32 @@ export default function Home() {
     );
   }
 
+  const usdValue = user ? (user.points_balance / POINTS_PER_DOLLAR).toFixed(3) : '0.000';
+
   return (
     <main style={styles.page}>
       <h1 style={styles.heading}>Welcome, {user?.username}</h1>
 
+      <a href="/referral" style={styles.navLink}>Invite Friends →</a>
+      <a href="/withdraw" style={styles.navLink}>Withdraw →</a>
+
       <div style={styles.balanceCard}>
         <p style={styles.balanceLabel}>Your Balance</p>
-        <p style={styles.balanceValue}>{user?.points_balance} points</p>
+        <p style={{
+          ...styles.balanceValue,
+          transform: balanceBounce ? 'scale(1.15)' : 'scale(1)',
+          transition: 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}>
+          ${usdValue}
+        </p>
       </div>
 
       <button style={styles.watchButton} onClick={startFlow}>
         Watch Ad to Earn
       </button>
-      <a href="/referral" style={{ display: 'block', textAlign: 'center', marginBottom: '16px', color: '#2481cc' }}>
-  Invite Friends →
-</a>
-<a href="/withdraw" style={{ display: 'block', textAlign: 'center', marginBottom: '16px', color: '#2481cc' }}>
-  Withdraw →
-</a>
 
       <div style={styles.bannerSlot}>Banner ad slot (placeholder)</div>
 
-
-      {/* Overlay flow: instructions -> watching -> verifying -> result */}
       {flowState !== 'idle' && (
         <div style={styles.overlayBackdrop}>
           <div style={styles.overlayCard}>
@@ -200,7 +211,7 @@ export default function Home() {
                   <li>Wait for the ad's own timer to finish completely — don't close it early.</li>
                   <li>After the timer ends, tap <strong>Continue</strong> inside the ad.</li>
                   <li>You'll be brought back here automatically — stay on this screen.</li>
-                  <li>If you close the ad before it finishes, you will <strong>not</strong> receive any points.</li>
+                  <li>If you close the ad before it finishes, you will <strong>not</strong> receive any reward.</li>
                 </ul>
                 <button style={styles.primaryButton} onClick={beginWatchingAd}>
                   Start Ad
@@ -269,6 +280,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '22px',
     marginBottom: '8px',
   },
+  navLink: {
+    display: 'block',
+    textAlign: 'center',
+    marginBottom: '10px',
+    color: '#2481cc',
+    textDecoration: 'none',
+    fontWeight: 600,
+  },
   balanceCard: {
     background: 'linear-gradient(135deg, #1e2a3a, #14202e)',
     borderRadius: '16px',
@@ -283,9 +302,10 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
   },
   balanceValue: {
-    fontSize: '38px',
+    fontSize: '40px',
     fontWeight: 700,
     margin: '8px 0 0',
+    display: 'inline-block',
   },
   watchButton: {
     width: '100%',
