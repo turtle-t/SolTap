@@ -86,19 +86,42 @@ export default function Home() {
 
   async function handleWatchAd() {
     setClaimMessage(null);
+    const tg = window.Telegram?.WebApp;
+
+    if (!tg?.initData) {
+      setClaimMessage('Telegram session not found.');
+      return;
+    }
 
     try {
-      // Trigger the Monetag Rewarded Interstitial
+      // Log the start BEFORE showing the ad, so our server has the real start time.
+      // This is what prevents someone from claiming a reward by tapping "Continue"
+      // instantly without actually waiting for the ad.
+      const startRes = await fetch('/api/ad-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const startData = await startRes.json();
+
+      if (!startRes.ok) {
+        setClaimMessage(startData.error || 'Could not start ad session.');
+        return;
+      }
+
+      const adEventId = startData.adEventId;
+
+      // Show the actual Monetag ad
       await window.show_11374343();
 
-      // Ad watched successfully — notify our server to verify + claim points
+      // Ad flow finished (or Continue was tapped) — try to claim.
+      // The server will reject this if not enough real time has passed.
       setClaiming(true);
-      const tg = window.Telegram?.WebApp;
 
       const res = await fetch('/api/claim-reward', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: tg.initData }),
+        body: JSON.stringify({ initData: tg.initData, adEventId }),
       });
 
       const data = await res.json();
@@ -110,7 +133,6 @@ export default function Home() {
         setClaimMessage(data.error || 'Could not claim reward.');
       }
     } catch (err) {
-      // User closed the ad early, or it failed to load
       setClaimMessage('Ad was not completed.');
     } finally {
       setClaiming(false);
