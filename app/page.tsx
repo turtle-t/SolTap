@@ -178,8 +178,12 @@ export default function Home() {
       <button style={styles.watchButton} onClick={startFlow}>
         Watch Ad to Earn
       </button>
+      <a href="/referral" style={{ display: 'block', textAlign: 'center', marginBottom: '16px', color: '#2481cc' }}>
+  Invite Friends →
+</a>
 
       <div style={styles.bannerSlot}>Banner ad slot (placeholder)</div>
+
 
       {/* Overlay flow: instructions -> watching -> verifying -> result */}
       {flowState !== 'idle' && (

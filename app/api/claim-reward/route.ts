@@ -9,6 +9,12 @@ const DAILY_BONUS_POINTS = 100;
 const STREAK_DAYS_REQUIRED = 7;
 const STREAK_BONUS_POINTS = 1000;
 
+const REFERRAL_SIGNUP_BONUS = 100;
+const REFERRAL_MILESTONE_REVENUE_USD = 10;
+const REFERRAL_MILESTONE_BONUS = 1000;
+const REFERRAL_COMMISSION_PERCENT = 2;
+const CREDITING_RATE_POINTS_PER_DOLLAR = 100; // matches our "$1 = 100 points" display rate
+
 export async function POST(req: NextRequest) {
   try {
     const { initData, adEventId } = await req.json();
@@ -55,13 +61,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Mark ad event verified + credited
     await sql`
       UPDATE ad_events SET verified = TRUE, verified_at = NOW(), points_awarded = TRUE
       WHERE id = ${adEventId}
     `;
 
-    // Base ad points
     await sql`
       INSERT INTO points_ledger (user_id, amount, source, reference_id)
       VALUES (${userId}, ${POINTS_PER_AD}, 'ad_view', ${adEventId})
@@ -76,7 +80,7 @@ export async function POST(req: NextRequest) {
     let dailyBonusAwarded = false;
     let streakBonusAwarded = false;
 
-    // Update today's activity count
+    // --- Daily activity + streak (unchanged from before) ---
     const dailyResult = await sql`
       INSERT INTO daily_activity (user_id, activity_date, verified_ad_count)
       VALUES (${userId}, CURRENT_DATE, 1)
@@ -88,32 +92,25 @@ export async function POST(req: NextRequest) {
     const todayCount = dailyResult[0].verified_ad_count;
     const alreadyPaidToday = dailyResult[0].daily_bonus_paid;
 
-    // --- Daily bonus check ---
     if (todayCount >= DAILY_BONUS_THRESHOLD && !alreadyPaidToday) {
       await sql`
         UPDATE daily_activity SET daily_bonus_paid = TRUE
         WHERE user_id = ${userId} AND activity_date = CURRENT_DATE
       `;
-
       await sql`
         INSERT INTO points_ledger (user_id, amount, source, reference_id)
         VALUES (${userId}, ${DAILY_BONUS_POINTS}, 'daily_bonus', ${adEventId})
       `;
-
       await sql`
         UPDATE users SET points_balance = points_balance + ${DAILY_BONUS_POINTS}
         WHERE id = ${userId}
       `;
-
       totalAwarded += DAILY_BONUS_POINTS;
       dailyBonusAwarded = true;
 
-      // --- Streak update (only advances once per day, exactly when daily bonus triggers) ---
       const streakResult = await sql`
-        SELECT current_streak_days, last_qualifying_date FROM streaks
-        WHERE user_id = ${userId}
+        SELECT current_streak_days, last_qualifying_date FROM streaks WHERE user_id = ${userId}
       `;
-
       let newStreakDays = 1;
 
       if (streakResult.length > 0) {
@@ -121,20 +118,12 @@ export async function POST(req: NextRequest) {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
-
         const lastDateStr = lastDate ? new Date(lastDate).toISOString().split('T')[0] : null;
 
-        if (lastDateStr === yesterdayStr) {
-          // Continued the streak
-          newStreakDays = streakResult[0].current_streak_days + 1;
-        } else {
-          // Streak broken (or first time) — restart at 1
-          newStreakDays = 1;
-        }
+        newStreakDays = lastDateStr === yesterdayStr ? streakResult[0].current_streak_days + 1 : 1;
 
         await sql`
-          UPDATE streaks
-          SET current_streak_days = ${newStreakDays}, last_qualifying_date = CURRENT_DATE, updated_at = NOW()
+          UPDATE streaks SET current_streak_days = ${newStreakDays}, last_qualifying_date = CURRENT_DATE, updated_at = NOW()
           WHERE user_id = ${userId}
         `;
       } else {
@@ -144,26 +133,100 @@ export async function POST(req: NextRequest) {
         `;
       }
 
-      // --- Streak bonus check ---
       if (newStreakDays >= STREAK_DAYS_REQUIRED) {
         await sql`
           INSERT INTO points_ledger (user_id, amount, source, reference_id)
           VALUES (${userId}, ${STREAK_BONUS_POINTS}, 'streak_bonus', ${adEventId})
         `;
-
         await sql`
           UPDATE users SET points_balance = points_balance + ${STREAK_BONUS_POINTS}
           WHERE id = ${userId}
         `;
-
-        // Reset streak counter after paying out, so the next 7-day cycle starts fresh
         await sql`
-          UPDATE streaks SET current_streak_days = 0
-          WHERE user_id = ${userId}
+          UPDATE streaks SET current_streak_days = 0 WHERE user_id = ${userId}
         `;
-
         totalAwarded += STREAK_BONUS_POINTS;
         streakBonusAwarded = true;
+      }
+    }
+
+    // --- Referral logic ---
+    // Check if this user (B) was referred by someone (A)
+    const referralResult = await sql`
+      SELECT id, referrer_id, first_ad_verified, milestone_paid, total_referred_revenue
+      FROM referrals
+      WHERE referred_id = ${userId}
+    `;
+
+    if (referralResult.length > 0) {
+      const referral = referralResult[0];
+      const referrerId = referral.referrer_id;
+
+      // This ad view's revenue-equivalent in dollars, based on our crediting rate
+      const thisViewRevenueUsd = POINTS_PER_AD / CREDITING_RATE_POINTS_PER_DOLLAR;
+      const newTotalRevenue = Number(referral.total_referred_revenue) + thisViewRevenueUsd;
+
+      await sql`
+        UPDATE referrals SET total_referred_revenue = ${newTotalRevenue}
+        WHERE id = ${referral.id}
+      `;
+
+      // 1. Signup bonus — fires once, on B's FIRST verified ad
+      if (!referral.first_ad_verified) {
+        await sql`
+          UPDATE referrals SET first_ad_verified = TRUE WHERE id = ${referral.id}
+        `;
+
+        // Bonus to referrer (A)
+        await sql`
+          INSERT INTO points_ledger (user_id, amount, source, reference_id)
+          VALUES (${referrerId}, ${REFERRAL_SIGNUP_BONUS}, 'referral_signup_bonus', ${referral.id})
+        `;
+        await sql`
+          UPDATE users SET points_balance = points_balance + ${REFERRAL_SIGNUP_BONUS}
+          WHERE id = ${referrerId}
+        `;
+
+        // Bonus to referred user (B) — this user, right now
+        await sql`
+          INSERT INTO points_ledger (user_id, amount, source, reference_id)
+          VALUES (${userId}, ${REFERRAL_SIGNUP_BONUS}, 'referral_signup_bonus', ${referral.id})
+        `;
+        await sql`
+          UPDATE users SET points_balance = points_balance + ${REFERRAL_SIGNUP_BONUS}
+          WHERE id = ${userId}
+        `;
+
+        totalAwarded += REFERRAL_SIGNUP_BONUS;
+      }
+
+      // 2. Milestone bonus — fires once, when referred user's total revenue hits $10
+      if (!referral.milestone_paid && newTotalRevenue >= REFERRAL_MILESTONE_REVENUE_USD) {
+        await sql`
+          UPDATE referrals SET milestone_paid = TRUE WHERE id = ${referral.id}
+        `;
+
+        await sql`
+          INSERT INTO points_ledger (user_id, amount, source, reference_id)
+          VALUES (${referrerId}, ${REFERRAL_MILESTONE_BONUS}, 'referral_milestone_bonus', ${referral.id})
+        `;
+        await sql`
+          UPDATE users SET points_balance = points_balance + ${REFERRAL_MILESTONE_BONUS}
+          WHERE id = ${referrerId}
+        `;
+      }
+
+      // 3. Lifetime commission — 2% of every point B earns, credited to A, every time
+      const commissionPoints = Math.floor((totalAwarded * REFERRAL_COMMISSION_PERCENT) / 100);
+      if (commissionPoints > 0) {
+        await sql`
+          INSERT INTO points_ledger (user_id, amount, source, reference_id)
+          VALUES (${referrerId}, ${commissionPoints}, 'referral_commission', ${adEventId})
+        `;
+        await sql`
+          UPDATE users SET points_balance = points_balance + ${commissionPoints}
+          WHERE id = ${referrerId}
+        `;
       }
     }
 
