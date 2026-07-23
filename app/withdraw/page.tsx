@@ -75,7 +75,8 @@ export default function WithdrawPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setMessage(data.message);
+        const usd = (pointsBalance / POINTS_PER_DOLLAR).toFixed(3);
+        setMessage(`Withdrawal request submitted for $${usd}.`);
         setMessageIsError(false);
         setWalletAddress('');
         await loadHistory();
@@ -96,7 +97,8 @@ export default function WithdrawPage() {
   }
 
   const canWithdraw = pointsBalance >= MIN_WITHDRAWAL_POINTS;
-  const usdValue = (pointsBalance / POINTS_PER_DOLLAR).toFixed(2);
+  const usdValue = (pointsBalance / POINTS_PER_DOLLAR).toFixed(3);
+  const minUsd = (MIN_WITHDRAWAL_POINTS / POINTS_PER_DOLLAR).toFixed(2);
 
   return (
     <main style={{ padding: '20px', maxWidth: '480px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
@@ -111,13 +113,12 @@ export default function WithdrawPage() {
         textAlign: 'center',
       }}>
         <p style={{ fontSize: '13px', color: '#9fb3c8', margin: 0 }}>Available Balance</p>
-        <p style={{ fontSize: '30px', fontWeight: 700, margin: '6px 0' }}>{pointsBalance} points</p>
-        <p style={{ fontSize: '14px', color: '#9fb3c8', margin: 0 }}>≈ ${usdValue} in SOL</p>
+        <p style={{ fontSize: '32px', fontWeight: 700, margin: '6px 0' }}>${usdValue}</p>
       </div>
 
       {!canWithdraw && (
         <p style={{ color: '#e0a952', fontSize: '14px', textAlign: 'center' }}>
-          You need at least {MIN_WITHDRAWAL_POINTS} points (${(MIN_WITHDRAWAL_POINTS / POINTS_PER_DOLLAR).toFixed(2)}) to withdraw.
+          You need at least ${minUsd} to withdraw.
         </p>
       )}
 
@@ -180,7 +181,7 @@ export default function WithdrawPage() {
               fontSize: '14px',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>{w.points_spent} points</span>
+                <span>${(w.points_spent / POINTS_PER_DOLLAR).toFixed(3)}</span>
                 <span style={{
                   color:
                     w.status === 'sent' ? '#3ecf8e' :
