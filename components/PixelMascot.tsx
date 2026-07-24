@@ -47,16 +47,16 @@ export default function PixelMascot({ messages }: PixelMascotProps) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  walker: {
-    position: 'fixed',
-    bottom: '86px',
-    left: 0,
-    width: '100%',
-    height: '70px',
-    pointerEvents: 'none',
-    zIndex: 400,
-    animation: 'walkAcross 9s linear infinite',
-  },
+ walker: {
+  position: 'fixed',
+  bottom: '86px',
+  left: 0,
+  width: '100%',
+  height: '70px',
+  pointerEvents: 'none',
+  zIndex: 400,
+  animation: 'walkAcross 22s linear infinite', // was 9s — slowed down
+},
   character: {
     width: '36px',
     animation: 'bob 0.5s ease-in-out infinite',
