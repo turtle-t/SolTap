@@ -55,11 +55,11 @@ const styles: Record<string, React.CSSProperties> = {
   height: '70px',
   pointerEvents: 'none',
   zIndex: 400,
-  animation: 'walkAcross 22s linear infinite', // was 9s — slowed down
+  animation: 'walkAcross 50s linear infinite', // was 9s — slowed down
 },
   character: {
   width: '36px',
-  animation: 'bob 0.9s ease-in-out infinite', // was 0.5s
+  animation: 'bob 0.15s ease-in-out infinite', // was 0.5s
 },
   head: {
     width: '28px',
