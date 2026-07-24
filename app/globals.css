@@ -54,3 +54,15 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   50% { opacity: 0.6; }
 }
 .flame-flicker { animation: flicker 1.2s ease-in-out infinite; }
+@keyframes walkAcross {
+  0%   { transform: translateX(-10vw); }
+  50%  { transform: translateX(70vw); }
+  50.01% { transform: translateX(70vw) scaleX(-1); }
+  99.99% { transform: translateX(-10vw) scaleX(-1); }
+  100% { transform: translateX(-10vw); }
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}

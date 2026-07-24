@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import PixelMascot from '@/components/PixelMascot';
 
 declare global {
   interface Window {
@@ -11,6 +12,26 @@ declare global {
 interface TaskData {
   daily: { current: number; target: number; rewardUsd: number; completed: boolean };
   streak: { current: number; target: number; rewardUsd: number };
+}
+
+function buildMessages(data: TaskData): string[] {
+  const msgs: string[] = [];
+
+  const dailyRemaining = data.daily.target - data.daily.current;
+  if (!data.daily.completed && dailyRemaining > 0) {
+    msgs.push(`WATCH ${dailyRemaining} MORE ADS FOR +$${data.daily.rewardUsd.toFixed(2)}!`);
+  } else if (data.daily.completed) {
+    msgs.push(`DAILY BONUS CLAIMED! COME BACK TOMORROW!`);
+  }
+
+  const streakRemaining = data.streak.target - data.streak.current;
+  if (streakRemaining > 0) {
+    msgs.push(`${streakRemaining} MORE DAYS FOR A +$${data.streak.rewardUsd.toFixed(2)} STREAK BONUS!`);
+  }
+
+  msgs.push(`INVITE FRIENDS TO EARN 2% FOREVER!`);
+
+  return msgs;
 }
 
 export default function TasksPage() {
@@ -37,7 +58,6 @@ export default function TasksPage() {
   if (!data) return <main style={styles.centerScreen}>Open inside Telegram to view tasks.</main>;
 
   const dailyPct = Math.min((data.daily.current / data.daily.target) * 100, 100);
-  const streakPct = Math.min((data.streak.current / data.streak.target) * 100, 100);
 
   return (
     <main style={styles.page}>
@@ -85,6 +105,8 @@ export default function TasksPage() {
       <div style={styles.hint}>
         Both tasks progress automatically as you watch ads on the Home tab.
       </div>
+
+      <PixelMascot messages={buildMessages(data)} />
     </main>
   );
 }
