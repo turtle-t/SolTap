@@ -21,46 +21,20 @@ declare global {
 type FlowState = 'idle' | 'instructions' | 'watching' | 'verifying' | 'result';
 
 const POINTS_PER_DOLLAR = 1000;
-const DAILY_BONUS_THRESHOLD = 50; // ads
+const DAILY_BONUS_THRESHOLD = 50;
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
+  const [streakDays, setStreakDays] = useState(0);
+  const [todayAdCount, setTodayAdCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [flowState, setFlowState] = useState<FlowState>('idle');
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [resultSuccess, setResultSuccess] = useState(false);
   const [balancePop, setBalancePop] = useState(false);
-  const [todayCount, setTodayCount] = useState(0);
 
-  useEffect(() => {
-    async function authenticate() {
-      try {
-        const tg = window.Telegram?.WebApp;
-        if (!tg) { setError('This app must be opened inside Telegram.'); setLoading(false); return; }
-
-        tg.ready();
-        const initData = tg.initData;
-        if (!initData) { setError('No Telegram data found. Open this app via your Telegram bot.'); setLoading(false); return; }
-
-        const fingerprint = generateFingerprint();
-        const res = await fetch('/api/auth', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData, fingerprint }),
-        });
-        const data = await res.json();
-        if (!res.ok) setError(data.error || 'Authentication failed');
-        else setUser(data.user);
-      } catch (err) {
-        setError('Something went wrong connecting to the server.');
-      } finally {
-        setLoading(false);
-      }
-    }
-    authenticate();
-  }, []);
-
-  async function refreshBalance(animate = false) {
+  async function syncFromAuth(animate = false) {
     const tg = window.Telegram?.WebApp;
     if (!tg?.initData) return;
     const fingerprint = generateFingerprint();
@@ -71,9 +45,31 @@ export default function Home() {
     const data = await res.json();
     if (res.ok) {
       setUser(data.user);
-      if (animate) { setBalancePop(true); setTimeout(() => setBalancePop(false), 450); }
+      setStreakDays(data.streakDays || 0);
+      setTodayAdCount(data.todayAdCount || 0);
+      if (animate) { setBalancePop(true); setTimeout(() => setBalancePop(false), 700); }
     }
+    return data;
   }
+
+  useEffect(() => {
+    async function authenticate() {
+      try {
+        const tg = window.Telegram?.WebApp;
+        if (!tg) { setError('This app must be opened inside Telegram.'); setLoading(false); return; }
+        tg.ready();
+        if (!tg.initData) { setError('No Telegram data found. Open this app via your Telegram bot.'); setLoading(false); return; }
+
+        const data = await syncFromAuth(false);
+        if (!data) setError('Authentication failed');
+      } catch (err) {
+        setError('Something went wrong connecting to the server.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    authenticate();
+  }, []);
 
   function startFlow() { setResultMessage(null); setFlowState('instructions'); }
 
@@ -101,10 +97,9 @@ export default function Home() {
 
       if (res.ok) {
         const dollarsEarned = (data.totalAwarded / POINTS_PER_DOLLAR).toFixed(3);
-        setResultMessage(`+$${dollarsEarned} earned!`);
+        setResultMessage(`+$${dollarsEarned} EARNED!`);
         setResultSuccess(true);
-        setTodayCount((c) => Math.min(c + 1, DAILY_BONUS_THRESHOLD));
-        await refreshBalance(true);
+        await syncFromAuth(true);
       } else {
         setResultMessage(data.error || 'Could not claim reward.');
         setResultSuccess(false);
@@ -119,66 +114,66 @@ export default function Home() {
 
   function closeOverlay() { setFlowState('idle'); }
 
-  if (loading) return <main style={styles.centerScreen}>Loading...</main>;
+  if (loading) return <main style={styles.centerScreen}>LOADING...</main>;
   if (error) return <main style={{ ...styles.centerScreen, color: 'var(--danger)' }}>{error}</main>;
 
   const usdValue = user ? (user.points_balance / POINTS_PER_DOLLAR).toFixed(3) : '0.000';
-  const progressPct = Math.min((todayCount / DAILY_BONUS_THRESHOLD) * 100, 100);
-  const circumference = 2 * Math.PI * 54;
-  const dashOffset = circumference - (progressPct / 100) * circumference;
+  const filledBlocks = Math.round((todayAdCount / DAILY_BONUS_THRESHOLD) * 10);
 
   return (
     <main style={styles.page}>
-      <h1 className="font-display" style={styles.heading}>Hey, {user?.username}</h1>
-      <p style={styles.subheading}>Watch ads, earn real Solana</p>
+      <p className="pixel-font" style={styles.eyebrow}>PLAYER</p>
+      <h1 className="pixel-font" style={styles.heading}>{user?.username}</h1>
 
-      <div style={styles.balanceWrap}>
-        <svg width="140" height="140" style={{ position: 'absolute', transform: 'rotate(-90deg)' }}>
-          <circle cx="70" cy="70" r="54" stroke="var(--border)" strokeWidth="6" fill="none" />
-          <circle
-            cx="70" cy="70" r="54" stroke="url(#ringGradient)" strokeWidth="6" fill="none"
-            strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset}
-            style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-          />
-          <defs>
-            <linearGradient id="ringGradient" x1="0" y1="0" x2="1" y2="1">
-              <stop stopColor="var(--accent-purple)" /><stop offset="1" stopColor="var(--accent-teal)" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div style={styles.balanceCircleInner}>
-          <p style={{ ...styles.balanceLabel }}>Balance</p>
-          <p className={`font-mono ${balancePop ? 'balance-pop' : ''}`} style={styles.balanceValue}>
-            ${usdValue}
-          </p>
-        </div>
+      {/* Streak */}
+      <div style={styles.streakRow}>
+        <span className="flame-flicker" style={{ fontSize: '22px' }}>🔥</span>
+        <span className="pixel-font" style={styles.streakText}>{streakDays} DAY STREAK</span>
       </div>
 
-      <p style={styles.progressCaption}>
-        {todayCount}/{DAILY_BONUS_THRESHOLD} ads today · bonus at {DAILY_BONUS_THRESHOLD}
-      </p>
+      {/* Coin balance */}
+      <div style={styles.coinBox}>
+        <p className="pixel-font" style={styles.coinLabel}>BALANCE</p>
+        <p className={`pixel-font ${balancePop ? 'balance-pop' : ''}`} style={styles.coinValue}>
+          ${usdValue}
+        </p>
+      </div>
 
-      <button style={styles.watchButton} onClick={startFlow}>
-        Watch Ad to Earn
+      {/* Daily progress — segmented pixel blocks */}
+      <p className="pixel-font" style={styles.progressLabel}>
+        {todayAdCount}/{DAILY_BONUS_THRESHOLD} ADS — BONUS AT {DAILY_BONUS_THRESHOLD}
+      </p>
+      <div style={styles.blockRow}>
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} style={{
+            ...styles.block,
+            background: i < filledBlocks ? 'var(--coin-gold)' : 'var(--surface)',
+            borderColor: i < filledBlocks ? 'var(--coin-gold)' : 'var(--border)',
+          }} />
+        ))}
+      </div>
+
+      <button className="pixel-font" style={styles.watchButton} onClick={startFlow}>
+        ▶ WATCH AD
       </button>
 
-      <div style={styles.bannerSlot}>Ad space</div>
+      <div className="pixel-font" style={styles.bannerSlot}>AD SPACE</div>
 
       {flowState !== 'idle' && (
         <div style={styles.overlayBackdrop}>
           <div style={styles.overlayCard}>
             {flowState === 'instructions' && (
               <>
-                <h2 className="font-display" style={styles.overlayTitle}>Before you start</h2>
+                <h2 className="pixel-font" style={styles.overlayTitle}>BEFORE YOU START</h2>
                 <ul style={styles.instructionList}>
-                  <li>Tap <strong>Start Ad</strong> below.</li>
-                  <li>Wait for the ad's timer to finish completely — don't close it early.</li>
-                  <li>After the timer ends, tap <strong>Continue</strong> inside the ad.</li>
-                  <li>You'll return here automatically — stay on this screen.</li>
-                  <li>Closing early means <strong>no reward</strong>.</li>
+                  <li>Tap START AD below.</li>
+                  <li>Wait for the ad's timer to finish — don't close early.</li>
+                  <li>After the timer ends, tap Continue inside the ad.</li>
+                  <li>You'll return here automatically.</li>
+                  <li>Closing early = no reward.</li>
                 </ul>
-                <button style={styles.primaryButton} onClick={beginWatchingAd}>Start Ad</button>
-                <button style={styles.secondaryButton} onClick={closeOverlay}>Cancel</button>
+                <button className="pixel-font" style={styles.primaryButton} onClick={beginWatchingAd}>START AD</button>
+                <button className="pixel-font" style={styles.secondaryButton} onClick={closeOverlay}>CANCEL</button>
               </>
             )}
             {flowState === 'watching' && (
@@ -192,15 +187,14 @@ export default function Home() {
               <>
                 <div style={styles.spinner} />
                 <p style={styles.overlayText}>Verifying…</p>
-                <p style={styles.overlaySubtext}>Just a moment.</p>
               </>
             )}
             {flowState === 'result' && (
               <>
-                <p style={{ ...styles.overlayText, color: resultSuccess ? 'var(--accent-teal)' : 'var(--danger)', fontSize: '20px' }}>
+                <p className="pixel-font" style={{ ...styles.overlayText, color: resultSuccess ? 'var(--coin-gold)' : 'var(--danger)', fontSize: '15px' }}>
                   {resultMessage}
                 </p>
-                <button style={styles.primaryButton} onClick={closeOverlay}>Done</button>
+                <button className="pixel-font" style={styles.primaryButton} onClick={closeOverlay}>OK</button>
               </>
             )}
           </div>
@@ -212,27 +206,33 @@ export default function Home() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: { padding: '24px 20px', maxWidth: '480px', margin: '0 auto', textAlign: 'center' },
-  centerScreen: { padding: '20px', textAlign: 'center', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  heading: { fontSize: '24px', margin: '8px 0 2px', fontWeight: 700 },
-  subheading: { fontSize: '14px', color: 'var(--text-muted)', margin: '0 0 28px' },
-  balanceWrap: { position: 'relative', width: '140px', height: '140px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  balanceCircleInner: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  balanceLabel: { fontSize: '11px', color: 'var(--text-muted)', margin: 0, letterSpacing: '0.05em', textTransform: 'uppercase' },
-  balanceValue: { fontSize: '26px', fontWeight: 700, margin: '4px 0 0', color: 'var(--text)' },
-  progressCaption: { fontSize: '12px', color: 'var(--text-muted)', marginTop: '14px', marginBottom: '28px' },
-  watchButton: {
-    width: '100%', padding: '17px', fontSize: '16px', fontWeight: 700,
-    background: 'var(--gradient)', color: '#0d0b16', border: 'none', borderRadius: '14px', cursor: 'pointer',
-    fontFamily: 'Sora, sans-serif',
+  centerScreen: { padding: '20px', textAlign: 'center', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Press Start 2P', monospace", fontSize: '12px' },
+  eyebrow: { fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '2px', marginBottom: '6px' },
+  heading: { fontSize: '16px', margin: '0 0 16px' },
+  streakRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' },
+  streakText: { fontSize: '10px', color: 'var(--coin-gold)' },
+  coinBox: {
+    background: 'var(--surface)', border: '4px solid var(--border)', borderRadius: '4px',
+    padding: '24px', marginBottom: '18px', boxShadow: '6px 6px 0 rgba(0,0,0,0.4)',
   },
-  bannerSlot: { marginTop: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', padding: '14px', border: '1px dashed var(--border)', borderRadius: '10px' },
-  overlayBackdrop: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' },
-  overlayCard: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '18px', padding: '28px 24px', maxWidth: '380px', width: '100%', textAlign: 'center' },
-  overlayTitle: { fontSize: '19px', marginBottom: '16px' },
-  instructionList: { textAlign: 'left', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-muted)', marginBottom: '20px', paddingLeft: '20px' },
-  overlayText: { fontSize: '16px', fontWeight: 600, marginBottom: '8px', color: 'var(--text)' },
-  overlaySubtext: { fontSize: '13px', color: 'var(--text-muted)' },
-  primaryButton: { width: '100%', padding: '14px', fontSize: '15px', fontWeight: 700, background: 'var(--gradient)', color: '#0d0b16', border: 'none', borderRadius: '12px', cursor: 'pointer', marginTop: '8px', fontFamily: 'Sora, sans-serif' },
-  secondaryButton: { width: '100%', padding: '12px', fontSize: '14px', background: 'transparent', color: 'var(--text-muted)', border: 'none', cursor: 'pointer', marginTop: '4px' },
-  spinner: { width: '32px', height: '32px', border: '3px solid var(--accent-purple)', borderTopColor: 'transparent', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' },
+  coinLabel: { fontSize: '9px', color: 'var(--text-muted)', marginBottom: '10px' },
+  coinValue: { fontSize: '32px', color: 'var(--coin-gold)', margin: 0, display: 'inline-block' },
+  progressLabel: { fontSize: '9px', color: 'var(--text-muted)', marginBottom: '8px' },
+  blockRow: { display: 'flex', justifyContent: 'center', gap: '4px', marginBottom: '24px' },
+  block: { width: '20px', height: '20px', border: '2px solid', borderRadius: '2px' },
+  watchButton: {
+    width: '100%', padding: '18px', fontSize: '13px',
+    background: 'var(--coin-gold)', color: '#1a1408', border: '4px solid #a8791e',
+    borderRadius: '4px', cursor: 'pointer', boxShadow: '5px 5px 0 rgba(0,0,0,0.4)',
+  },
+  bannerSlot: { marginTop: '20px', color: 'var(--text-muted)', fontSize: '9px', padding: '16px', border: '3px dashed var(--border)', borderRadius: '4px' },
+  overlayBackdrop: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' },
+  overlayCard: { background: 'var(--surface)', border: '4px solid var(--border)', borderRadius: '4px', padding: '26px 22px', maxWidth: '380px', width: '100%', textAlign: 'center', boxShadow: '6px 6px 0 rgba(0,0,0,0.4)' },
+  overlayTitle: { fontSize: '13px', marginBottom: '16px' },
+  instructionList: { textAlign: 'left', fontSize: '16px', lineHeight: 1.7, color: 'var(--text-muted)', marginBottom: '20px', paddingLeft: '20px' },
+  overlayText: { fontSize: '17px', fontWeight: 600, marginBottom: '8px', color: 'var(--text)' },
+  overlaySubtext: { fontSize: '14px', color: 'var(--text-muted)' },
+  primaryButton: { width: '100%', padding: '14px', fontSize: '12px', background: 'var(--coin-gold)', color: '#1a1408', border: '3px solid #a8791e', borderRadius: '4px', cursor: 'pointer', marginTop: '8px', boxShadow: '4px 4px 0 rgba(0,0,0,0.4)' },
+  secondaryButton: { width: '100%', padding: '12px', fontSize: '11px', background: 'transparent', color: 'var(--text-muted)', border: 'none', cursor: 'pointer', marginTop: '6px' },
+  spinner: { width: '32px', height: '32px', border: '4px solid var(--coin-gold)', borderTopColor: 'transparent', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' },
 };

@@ -58,7 +58,6 @@ export async function POST(req: NextRequest) {
         SELECT id FROM users WHERE telegram_id = ${referrerTelegramId}
       `;
 
-      // Can't refer yourself, and referrer must actually exist
       if (referrer.length > 0 && referrer[0].id !== userRow.id) {
         await sql`
           INSERT INTO referrals (referrer_id, referred_id)
@@ -95,7 +94,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ user: userRow });
+    // --- Streak + today's ad count, for the home screen ---
+    const streakResult = await sql`
+      SELECT current_streak_days FROM streaks WHERE user_id = ${userRow.id}
+    `;
+    const todayResult = await sql`
+      SELECT verified_ad_count FROM daily_activity
+      WHERE user_id = ${userRow.id} AND activity_date = CURRENT_DATE
+    `;
+
+    return NextResponse.json({
+      user: userRow,
+      streakDays: streakResult[0]?.current_streak_days || 0,
+      todayAdCount: todayResult[0]?.verified_ad_count || 0,
+    });
 
   } catch (error) {
     console.error('Auth error:', error);
