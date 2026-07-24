@@ -58,9 +58,9 @@ const styles: Record<string, React.CSSProperties> = {
   animation: 'walkAcross 22s linear infinite', // was 9s — slowed down
 },
   character: {
-    width: '36px',
-    animation: 'bob 0.5s ease-in-out infinite',
-  },
+  width: '36px',
+  animation: 'bob 0.9s ease-in-out infinite', // was 0.5s
+},
   head: {
     width: '28px',
     height: '20px',
